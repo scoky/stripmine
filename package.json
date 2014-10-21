@@ -1,0 +1,27 @@
+{
+"name": "stripmine",
+"version": "1.0.0",
+"description": "A tool for scrapping web pages",
+"engines" : {
+	"node" : ">=0.10.19"
+},
+"devDependencies": {
+	"coffee-script": "*",
+	"request": "*",
+	"minimist": "*",
+	"zombie": "*"
+},
+"repository": {
+"type": "git",
+"url": "https://github.com/scoky/stripmine.git"
+},
+"homepage": "https://github.com/scoky/stripmine",
+"bugs": {
+"url": "https://github.com/scoky/stripmine/issues"
+},
+"author": "Kyle Graham Schomp <kgs7@case.edu> (https://kyle.schomp.info)",
+"contributors": [
+],
+"license": "MIT",
+"readmeFilename": "README.md"
+}
