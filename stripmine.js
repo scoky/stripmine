@@ -6,7 +6,7 @@ var path = require('path')
 var request = require('request')
 var CS = require('coffee-script')
 CS.register()
-var Browser = require('zombie')
+var Browser = require('../plain-zombie/zombie/src/zombie/')
 
 var argv = require('minimist')(process.argv.slice(2))
 if (argv.h || argv._.length != 2) {
@@ -19,7 +19,6 @@ out_dir = argv._[1]
 
 function parse_url(url) {
   var details = urlparse(url)
-  var path = details.pathname
   if (path.extname(details.pathname)) {
     details.filename = path.basename(details.pathname)
     details.directory = path.dirname(details.pathname)
@@ -31,7 +30,7 @@ function parse_url(url) {
 }
 
 function get_directory(details) {
-  return path.join(path.join(out_dir,details.host), details.directory))
+  return path.join(path.join(out_dir,details.host), details.directory)
 }
 
 function get_filename(details) {
@@ -40,27 +39,32 @@ function get_filename(details) {
 
 var pending = 0
 function fetchBrowser(url) {
+  console.log('Browsing '+url)
   pending = 0
   var browser = Browser.create()
   browser.visit(url, function () {
     browser.resources.forEach(function (resource) {
-      if (resource) {
+      if (resource && urlparse(resource.request.url).path) {
         var embed_url = urlresolve(url, resource.request.url)
+        console.log('Resource '+embed_url)
 	fetchObject(embed_url)
 	pending += 1
       }
     })
+    if (pending === 0) {
+      nextURL()
+    }
   })
-  if (pending === 0) {
-    nextURL()
-  }
 }
 
 function fetchObject(url) {
   var details = parse_url(url)
+
   // Create domain directory
+  console.log('Creating directory '+get_directory(details))
   nfs.mkdir(get_directory(details), 0777, true, function () {})
 
+  console.log('Fetching '+url)
   try {
     request.get({uri : url, followRedirect : true}).on('response', onResponse).on('error', function (err) { 
       console.log(err)
@@ -70,23 +74,23 @@ function fetchObject(url) {
     console.log(e)
     done()
   }
-}
 
-function onResponse(response) {
-  var details = parse_url(response.request.uri.href)
+  function onResponse(response) {
+    // Write response object to file
+    var wfile = fs.createWriteStream(get_filename(details))
+    wfile.on('error', function(err) { console.log(err) })
+    response.pipe(wfile)
 
-  // Write response object to file
-  response.pipe(fs.createWriteStream(get_filename(details)))
-
-  // Store the headers
-  var data = {
-  	responseCode = response.statusCode
-  	headers = response.headers
+    // Store the headers
+    var data = {
+  	responseCode : 	response.statusCode,
+    	headers : 	response.headers
+    }
+    fs.writeFile(get_filename(details)+'.headers', JSON.stringify(data, null, '\t'), function (err) {
+      if (err) console.log(err)
+    })
+    done()
   }
-  fs.writeFile(get_filename(details)+'.headers', JSON.stringify(data, null, '\t'), function (err) {
-    if (err) console.log(err)
-  })
-  done()
 }
 
 function done() {
@@ -107,7 +111,7 @@ var i = 0
 // Fetch URLs one at a time
 function nextURL() {
   if (i < urls.length) {
-    fetch(urls[i])
+    fetchBrowser(urls[i])
     i += 1
   } else {
     process.exit()
