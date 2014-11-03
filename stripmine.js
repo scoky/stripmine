@@ -1,4 +1,5 @@
 var fs = require('fs')
+var nfs = require('node-fs')
 var urlparse = require('url').parse
 var urlresolve = require('url').resolve
 var path = require('path')
@@ -8,7 +9,7 @@ CS.register()
 var Browser = require('zombie')
 
 var argv = require('minimist')(process.argv.slice(2))
-if (argv.h || argv._.length < 2) {
+if (argv.h || argv._.length != 2) {
   console.log('USAGE: node client.js <url_file> <output_dir>')
   console.log('-h print this help menu')
   process.exit()
@@ -16,142 +17,102 @@ if (argv.h || argv._.length < 2) {
 url_file = argv._[0]
 out_dir = argv._[1]
 
-var obj = { }
-var resources = { }
-
-function writeResourcesToFiles() {
-  for (var hostname in obj) {
-    var directory = path.join(out_dir, hostname)
-    writeDirectory(directory,obj[hostname])
+function parse_url(url) {
+  var details = urlparse(url)
+  var path = details.pathname
+  if (path.extname(details.pathname)) {
+    details.filename = path.basename(details.pathname)
+    details.directory = path.dirname(details.pathname)
+  } else {
+    details.filename = 'index.html'
+    details.directory = details.pathname
   }
+  return details
 }
 
-function writeDirectory(directory, obj) {
-  var filename = path.join(directory, 'resources.list')
-  fs.readFile(filename, 'utf8', function(err, data) {
-    if (err) {
-      console.log('Filename='+filename+' Error: '+err)
-      writeResourcesFile(filename, obj)
-      return
-    } 
-/*    var oobj = JSON.parse(data)
-    var maximum = findMaximum(oobj)
-    for (key in obj) {
-      if (!oobj[key]) {
-        oobj[key] = ++maximum
-      }
-    }
-    writeResourcesFile(filename, oobj)*/
-    writeResourcesFile(filename, obj)
-  })
+function get_directory(details) {
+  return path.join(path.join(out_dir,details.host), details.directory))
 }
 
-/*function convertForWrite(obj) {
-  var nobj = { }
-  for (var key in obj) {
-    nobj[key] = obj[key].ref
-  }
-  return nobj
-}*/
-
-function writeResourcesFile(filename, obj) {
-  fs.writeFile(filename, JSON.stringify(obj, null, '\t'), function (err) {
-    if (err) console.log('Filename='+filename+' Error: '+err)
-  })
+function get_filename(details) {
+  return path.join(get_directory(details), details.filename)
 }
 
-function findMaximum(obj) {
-  var maximum = 0  
-  for (var key in obj) {
-    if (obj[key].ref > maximum) {
-      maximum = obj[key].ref
-    }
-  }
-  return maximum
-}
-
-function getResource(url) {
-  var hostname = urlparse(url).hostname
-  var directory = path.join(out_dir, hostname)
-
-  if (!obj[hostname]) {
-    obj[hostname] = { }
-    fs.mkdir(directory, function(err) {
-      if (err) console.log('Directory='+directory+' Error: '+err)
-    })
-  }
-  if (obj[hostname][url]) return obj[hostname][url]
-  obj[hostname][url] = {
-	ref : findMaximum(obj[hostname])+1,
-	responseCode : undefined,
-	headers : undefined
-  }
-  return obj[hostname][url]
-}
-
-function getResourceFile(url) {
-  var directory = path.join(out_dir, urlparse(url).hostname)
-  return path.join(directory, getResource(url).ref+'.response')
-}
-
-function fetch(url) {
+var pending = 0
+function fetchBrowser(url) {
+  pending = 0
   var browser = Browser.create()
   browser.visit(url, function () {
     browser.resources.forEach(function (resource) {
       if (resource) {
-        var nurl = urlresolve(url, resource.request.url)
-        var data = getResource(nurl)
-	// Never been fetched
-	if (!data.responseCode) {
-	  console.log(nurl)
-	  data.responseCode = 'pending'
-	  try {
-	    request.get({uri : nurl, followRedirect : false}).on('response', onResponse).on('error', function (err) { console.log(err) })
-	  } catch (e) {
-	    console.log(e)
-	    data.responseCode = 'failed'
-	  }
-     	}
+        var embed_url = urlresolve(url, resource.request.url)
+	fetchObject(embed_url)
+	pending += 1
       }
     })
   })
+  if (pending === 0) {
+    nextURL()
+  }
+}
+
+function fetchObject(url) {
+  var details = parse_url(url)
+  // Create domain directory
+  nfs.mkdir(get_directory(details), 0777, true, function () {})
+
+  try {
+    request.get({uri : url, followRedirect : true}).on('response', onResponse).on('error', function (err) { 
+      console.log(err)
+      done()
+    })
+  } catch (e) {
+    console.log(e)
+    done()
+  }
 }
 
 function onResponse(response) {
-  var filename = getResourceFile(response.request.uri.href)
-  response.pipe(fs.createWriteStream(filename))
-  var resource = getResource(response.request.uri.href)
-  resource.responseCode = response.statusCode
-  resource.headers = response.headers
+  var details = parse_url(response.request.uri.href)
 
-  // Redirect
-  if (response.headers['location']) {
-    var nurl = urlresolve(response.request.uri.href, response.headers['location'])
-    var data = getResource(nurl)
-    if (!data.responseCode) {
-      console.log('REDIRECT '+nurl)
-      data.responseCode = 'pending'
-      try {
-        request.get({ uri : nurl, followRedirect : false}).on('response', onResponse).on('error', function (err) { console.log(err) })
-      } catch (e) {
-        console.log(e)
-        data.responseCode = 'failed'
-      }
-    }
+  // Write response object to file
+  response.pipe(fs.createWriteStream(get_filename(details)))
+
+  // Store the headers
+  var data = {
+  	responseCode = response.statusCode
+  	headers = response.headers
   }
+  fs.writeFile(get_filename(details)+'.headers', JSON.stringify(data, null, '\t'), function (err) {
+    if (err) console.log(err)
+  })
+  done()
 }
 
-var buf = fs.readFileSync(url_file)
-var urls = buf.toString().split('\n')
+function done() {
+  pending -= 1
+  if (pending === 0)
+    nextURL()
+}
+
+// Load the files
+var urls = fs.readFileSync(url_file).toString().split('\n')
+try {
+  fs.mkdirSync(out_dir)
+} catch (e) {
+  console.log('Error creating output directory.')
+}
 
 var i = 0
-function next() {
+// Fetch URLs one at a time
+function nextURL() {
   if (i < urls.length) {
     fetch(urls[i])
     i += 1
-    setTimeout(next, 1000)
   } else {
-    setTimeout(writeResourcesToFiles, 20000)
+    process.exit()
   }
 }
-next()
+
+// Go
+nextURL()
