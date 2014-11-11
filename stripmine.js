@@ -38,41 +38,69 @@ function get_filename(details) {
 }
 
 var pending = 0
+var reqs = []
 function fetchBrowser(url) {
   console.log('Browsing '+url)
   pending = 0
   var browser = Browser.create()
+
+  browser.on('request', function(req) {
+    // Prevent duplicates
+    if (reqs.indexOf(req.url) !== -1) {
+      return
+    }
+    reqs.push(req.url)
+
+    fetchObject(req.url)
+  })
+
+  browser.on('redirect', function(req, res, red) {
+    // Prevent duplicates
+    if (reqs.indexOf(red.url) !== -1) {
+      return
+    }
+    reqs.push(red.url)
+
+    fetchObject(red.url)
+  })
+
   browser.visit(url, function () {
-    browser.resources.forEach(function (resource) {
-      if (resource && urlparse(resource.request.url).path) {
-        var embed_url = urlresolve(url, resource.request.url)
-        console.log('Resource '+embed_url)
-	fetchObject(embed_url)
-	pending += 1
-      }
-    })
     if (pending === 0) {
       nextURL()
     }
   })
 }
 
+var dirs = []
 function fetchObject(url) {
+  console.log('Resource '+url)
+  pending += 1
   var details = parse_url(url)
 
   // Create domain directory
-  console.log('Creating directory '+get_directory(details))
-  nfs.mkdir(get_directory(details), 0777, true, function () {})
+  if (dirs.indexOf(get_directory(details)) === -1) {
+    dirs.push(get_directory(details))
 
-  console.log('Fetching '+url)
-  try {
-    request.get({uri : url, followRedirect : true}).on('response', onResponse).on('error', function (err) { 
-      console.log(err)
-      done()
+    console.log('Creating directory '+get_directory(details))
+    nfs.mkdir(get_directory(details), 0777, true, function (err) {
+      if (err) console.log(err)
+      onDirectory()
     })
-  } catch (e) {
-    console.log(e)
-    done()
+  } else {
+    onDirectory()
+  }
+
+  function onDirectory() {
+    console.log('Fetching '+url)
+    try {
+      request.get({uri : url, followRedirect : false}).on('response', onResponse).on('error', function (err) { 
+        console.log(err)
+        done()
+      })
+    } catch (e) {
+      console.log(e)
+      done()
+    }
   }
 
   function onResponse(response) {
