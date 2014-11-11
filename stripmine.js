@@ -43,7 +43,7 @@ function fetchBrowser(url) {
   console.log('Browsing '+url)
   pending = 0
   var browser = Browser.create()
-
+  browser.waitDuration = '10s'
   browser.on('request', function(req) {
     // Prevent duplicates
     if (reqs.indexOf(req.url) !== -1) {
@@ -104,7 +104,7 @@ function fetchObject(url) {
   function onDirectory() {
     console.log('Fetching '+url)
     try {
-      request.get({uri : url, followRedirect : false}).on('response', onResponse).on('error', function (err) { 
+      request.get({ uri : url, followRedirect : false, timeout : 5000 }).on('response', onResponse).on('error', function (err) { 
         console.log(err)
         done()
       })
