@@ -77,17 +77,28 @@ function fetchObject(url) {
   pending += 1
   var details = parse_url(url)
 
-  // Create domain directory
-  if (dirs.indexOf(get_directory(details)) === -1) {
-    dirs.push(get_directory(details))
+  // If file exists, do not fetch
+  fs.stat(get_filename(details), function (err, stats) {
+    if (err) {
+      createDirectory()
+    } else {
+      done()
+    }
+  })
 
-    console.log('Creating directory '+get_directory(details))
-    nfs.mkdir(get_directory(details), 0777, true, function (err) {
-      if (err) console.log(err)
+  function createDirectory() {
+    // Create domain directory
+    if (dirs.indexOf(get_directory(details)) === -1) {
+      dirs.push(get_directory(details))
+
+      console.log('Creating directory '+get_directory(details))
+      nfs.mkdir(get_directory(details), 0777, true, function (err) {
+        if (err) console.log(err)
+        onDirectory()
+      })
+    } else {
       onDirectory()
-    })
-  } else {
-    onDirectory()
+    }
   }
 
   function onDirectory() {
