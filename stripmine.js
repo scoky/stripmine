@@ -6,7 +6,7 @@ var path = require('path')
 var request = require('request')
 var CS = require('coffee-script')
 CS.register()
-var Browser = require('../plain-zombie/zombie/src/zombie/')
+var Browser = require('zombie')
 
 var argv = require('minimist')(process.argv.slice(2))
 if (argv.h || argv._.length != 2) {
@@ -44,6 +44,7 @@ function fetchBrowser(url) {
   pending = 0
   var browser = Browser.create()
   browser.waitDuration = '10s'
+  browser.features = 'scripts css img iframe'
   browser.on('request', function(req) {
     // Prevent duplicates
     if (reqs.indexOf(req.url) !== -1) {
